@@ -1,3 +1,4 @@
+from asyncio import SendfileNotAvailableError
 import pandas as pd
 
 from sklearn.model_selection import train_test_split
@@ -10,8 +11,8 @@ train_df = pd.read_csv('/Users/jessicahalterman/Documents/MachineLearning/Assign
 test_df = pd.read_csv('/Users/jessicahalterman/Documents/MachineLearning/Assignment1/test.csv')
 combine = [train_df, test_df]
 
-train_df = train_df.drop(['Cabin', 'Fare', 'Ticket', 'Embarked'], axis='columns')
-test_df = test_df.drop(['Cabin', 'Fare', 'Ticket', 'Embarked'], axis='columns')
+train_df = train_df.drop(['Cabin', 'Fare', 'Ticket'], axis='columns')
+test_df = test_df.drop(['Cabin', 'Fare', 'Ticket'], axis='columns')
 combine = [train_df, test_df]
 
 for dataset in combine:
@@ -65,7 +66,7 @@ for dataset in combine:
 
 # Create new feature FamilySize from Parch and SibSp
 for dataset in combine:
-    dataset['FamilySize'] = dataset['SibSp'] + dataset['Parch'] + 1
+    dataset['FamilySize'] = dataset['SibSp'] + dataset['Parch']
 
 for dataset in combine:
     dataset['Title'] = dataset['Title'].replace(['Dr', 'Rev', 'Jonkheer'], 'Rare')
@@ -81,8 +82,17 @@ title_mapping = {'Mr': 1, 'Miss': 2, 'Mrs': 3, 'Master': 4, 'Rare': 5, 'Aristocr
 for dataset in combine:
     dataset['Title'] = dataset['Title'].map(title_mapping)
 
-train_df = train_df.drop(['SibSp', 'Parch', 'Age'], axis='columns')
-test_df = test_df.drop(['SibSp', 'Parch', 'Age'], axis='columns')
+freq_port = train_df.Embarked.dropna().mode()[0]
+
+for dataset in combine:
+    dataset['Embarked'] = dataset['Embarked'].fillna(freq_port)
+
+# replace Embarked with numerical value
+for dataset in combine:
+    dataset['Embarked'] = dataset['Embarked'].map( {'S':0, 'C':1, 'Q':2} ).astype(int)
+
+train_df = train_df.drop(['Age'], axis='columns')
+test_df = test_df.drop(['Age'], axis='columns')
 combine = [train_df, test_df]
 
 for dataset in combine:
@@ -93,26 +103,23 @@ for dataset in combine:
 #print(notMarried[['Parch', 'Survived', 'Pclass']].groupby(['Parch', 'Pclass']).mean().sort_values(by='Survived', ascending=False))
 
 y = train_df.Survived
-X = train_df.drop(['Survived'], axis=1)
+X = train_df.drop(['Survived', 'PassengerId'], axis=1).copy()
+X_final_test = test_df.drop(['PassengerId'], axis=1,).copy()
 
 print(X.describe())
-
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20)
  
 logRegression = LogisticRegression(max_iter=300)
-xgbcClassifier = XGBClassifier()
-randomForest = RandomForestClassifier()
+xgbcClassifier = XGBClassifier(booster='gbtree', tree_method='hist', grow_policy='lossguide')
+randomForest = RandomForestClassifier(max_depth=3)
  
 final_model = VotingClassifier(
     estimators=[('lr', logRegression), ('xgb', xgbcClassifier), ('rf', randomForest)], voting='hard')
  
-final_model.fit(X_train, y_train)
-print(final_model.score(X_test, y_test)) 
- 
-y_test_pred = final_model.predict(test_df)
+final_model.fit(X, y)
+y_test_pred = final_model.predict(X_final_test)
 
 submission = pd.DataFrame({
         "PassengerId": test_df["PassengerId"],
         "Survived": y_test_pred
     })
-submission.to_csv('/Users/jessicahalterman/Documents/MachineLearning/Competition1/submission.csv', index=False)
+submission.to_csv('/Users/jessicahalterman/Documents/MachineLearning/Competition1/submission_4.csv', index=False)
